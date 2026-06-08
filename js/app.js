@@ -919,7 +919,7 @@ class ZentrixAdminPanel {
         if (!confirm('Are you sure you want to ban this user?')) return;
 
         try {
-            await this.db.ref(`${this.dbPaths.users}/${userId}/state`).set('banned');
+            await this.db.ref(`${this.dbPaths.users}/${userId}/state`).set('ban');
             this.showNotification("Success", "User has been banned", "success");
             
             if (button) {
