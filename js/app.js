@@ -1127,7 +1127,7 @@ class ZentrixAdminPanel {
                                 </div>
                             </div>
                             
-                            ${task.ownerId && task.ownerId !== 'admin' && task.status === 'pending' ? `
+                            ${task.ownerId && task.ownerId !== '1891231976' && task.status === 'pending' ? `
                                 <div class="owner-info">
                                     <i class="fas fa-user"></i>
                                     <span>Owner ID: ${task.ownerId}</span>
@@ -1224,6 +1224,8 @@ class ZentrixAdminPanel {
             }
             
             const taskId = Date.now().toString();
+            const adminId = "1891231976";
+            
             const taskData = {
                 id: taskId,
                 name: name,
@@ -1234,8 +1236,8 @@ class ZentrixAdminPanel {
                 verification: verification,
                 total: 0,
                 status: 'active',
-                owner: 'admin',
-                ownerId: 'admin',
+                owner: adminId,
+                ownerId: adminId,
                 createdAt: Date.now()
             };
             
@@ -1245,7 +1247,7 @@ class ZentrixAdminPanel {
                 taskData.img = DEFAULT_IMAGE_URL;
             }
             
-            await this.db.ref(`${this.dbPaths.userTasks}/admin/${taskId}`).set(taskData);
+            await this.db.ref(`${this.dbPaths.userTasks}/${adminId}/${taskId}`).set(taskData);
             
             document.getElementById('taskName').value = '';
             document.getElementById('taskImage').value = '';
