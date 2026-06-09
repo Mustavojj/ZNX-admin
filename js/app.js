@@ -1235,7 +1235,7 @@ class ZentrixAdminPanel {
                 max: max,
                 verification: verification,
                 total: 0,
-                status: 'active',
+                status: 'pending',
                 owner: adminId,
                 ownerId: adminId,
                 createdAt: Date.now()
