@@ -12,6 +12,7 @@ const FIREBASE_CONFIG = {
 const BOT_TOKEN = "8242315368:AAH24vtwrfYGn_9Bi3yldywBE7x_sJbrri4";
 const ADMIN_PASSWORDS = ["Mostafa$500"];
 const ADMIN_TELEGRAM_ID = "1891231976";
+const CHAT_LINK = "https://t.me/ZENTRIX_CHAT";
 
 const DEFAULT_IMAGE_URL = "https://i.ibb.co/JwHWrrX3/4ef418a7e09b.jpg";
 
@@ -23,6 +24,7 @@ class ZentrixAdminPanel {
         this.botToken = BOT_TOKEN;
         this.currentTaskTab = 'pending';
         this.pendingWithdrawalsCache = [];
+        this.broadcastMethod = 'direct';
         
         this.dbPaths = {
             users: 'users',
@@ -204,7 +206,7 @@ class ZentrixAdminPanel {
     getPageTitle(pageName) {
         const titles = {
             'dashboard': 'ZENTRIX Dashboard',
-            'users': 'Users Management',
+            'users': 'Miners Management',
             'tasks': 'Tasks Management',
             'promoCodes': 'Promo Codes',
             'withdrawals': 'Withdrawals',
@@ -335,8 +337,8 @@ class ZentrixAdminPanel {
         this.elements.contentArea.innerHTML = `
             <div class="users-page">
                 <div class="page-header">
-                    <h2><i class="fas fa-users"></i> Users Management</h2>
-                    <p>Search and manage ZENTRIX miners</p>
+                    <h2><i class="fas fa-users"></i> Miners Management</h2>
+                    <p>Search and filter miners by various criteria</p>
                 </div>
                 
                 <div class="search-section">
@@ -352,14 +354,120 @@ class ZentrixAdminPanel {
                     </button>
                 </div>
                 
+                <div class="filter-section">
+                    <div class="filter-group">
+                        <label>Filter By:</label>
+                        <select id="filterType">
+                            <option value="ton">Top TON Balance</option>
+                            <option value="power">Top Power Balance</option>
+                            <option value="referrals">Top Referrals</option>
+                            <option value="referralPower">Top Referral Earnings</option>
+                            <option value="miningStarts">Top Mining Starts</option>
+                            <option value="tasksCompleted">Top Tasks Completed</option>
+                            <option value="oldest">Oldest Users</option>
+                            <option value="newest">Newest Users</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Limit:</label>
+                        <input type="number" id="filterLimit" value="10" min="1" max="100" style="width: 60px;">
+                    </div>
+                    <button class="filter-btn" onclick="admin.applyFilter()">
+                        <i class="fas fa-filter"></i> Apply Filter
+                    </button>
+                </div>
+                
                 <div id="userResults" class="user-results">
                     <div class="empty-state">
                         <i class="fas fa-user-search"></i>
-                        <p>Search for a miner by ID, username, or Telegram ID</p>
+                        <p>Search for miners or apply filters to see results</p>
                     </div>
                 </div>
             </div>
         `;
+    }
+
+    async applyFilter() {
+        const filterType = document.getElementById('filterType').value;
+        const limit = parseInt(document.getElementById('filterLimit').value) || 10;
+        
+        try {
+            const usersSnap = await this.db.ref(this.dbPaths.users).once('value');
+            const users = [];
+            
+            usersSnap.forEach(child => {
+                const user = child.val();
+                users.push({
+                    id: child.key,
+                    ...user
+                });
+            });
+            
+            let sortedUsers = [];
+            const filterLabels = {
+                ton: 'TON Balance',
+                power: 'Power Balance',
+                referrals: 'Total Referrals',
+                referralPower: 'Referral Earnings',
+                miningStarts: 'Mining Starts',
+                tasksCompleted: 'Tasks Completed',
+                oldest: 'Oldest Users',
+                newest: 'Newest Users'
+            };
+            
+            switch(filterType) {
+                case 'ton':
+                    sortedUsers = users.sort((a, b) => (b.tonBalance || 0) - (a.tonBalance || 0));
+                    break;
+                case 'power':
+                    sortedUsers = users.sort((a, b) => (b.powerBalance || 0) - (a.powerBalance || 0));
+                    break;
+                case 'referrals':
+                    sortedUsers = users.sort((a, b) => (b.totalReferrals || 0) - (a.totalReferrals || 0));
+                    break;
+                case 'referralPower':
+                    sortedUsers = users.sort((a, b) => (b.referralPower || 0) - (a.referralPower || 0));
+                    break;
+                case 'miningStarts':
+                    sortedUsers = users.sort((a, b) => (b.totalMiningStarts || 0) - (a.totalMiningStarts || 0));
+                    break;
+                case 'tasksCompleted':
+                    sortedUsers = users.sort((a, b) => (b.totalTasksCompleted || 0) - (a.totalTasksCompleted || 0));
+                    break;
+                case 'oldest':
+                    sortedUsers = users.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+                    break;
+                case 'newest':
+                    sortedUsers = users.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                    break;
+                default:
+                    sortedUsers = users;
+            }
+            
+            const resultUsers = sortedUsers.slice(0, limit);
+            
+            const filterLabel = filterLabels[filterType] || 'Filtered';
+            document.getElementById('userResults').innerHTML = `
+                <div class="filter-result-info" style="margin-bottom: 12px; color: var(--text-secondary); font-size: 0.85rem;">
+                    <i class="fas fa-info-circle"></i> Showing top ${resultUsers.length} users by <strong>${filterLabel}</strong>
+                </div>
+            `;
+            
+            if (resultUsers.length === 0) {
+                document.getElementById('userResults').innerHTML += `
+                    <div class="empty-state">
+                        <i class="fas fa-users"></i>
+                        <p>No users found</p>
+                    </div>
+                `;
+            } else {
+                await this.displayUsers(resultUsers);
+            }
+            
+        } catch (error) {
+            console.error("Error applying filter:", error);
+            this.showNotification("Error", "Filter failed", "error");
+        }
     }
 
     async searchUser() {
@@ -399,7 +507,8 @@ class ZentrixAdminPanel {
                     </div>
                 `;
             } else {
-                this.displayUsers(results);
+                document.getElementById('userResults').innerHTML = '';
+                await this.displayUsers(results);
             }
             
         } catch (error) {
@@ -413,7 +522,7 @@ class ZentrixAdminPanel {
         document.getElementById('userResults').innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-user-search"></i>
-                <p>Search for a miner by ID, username, or Telegram ID</p>
+                <p>Search for miners or apply filters to see results</p>
             </div>
         `;
     }
@@ -422,7 +531,7 @@ class ZentrixAdminPanel {
         const container = document.getElementById('userResults');
         
         if (users.length === 0) {
-            container.innerHTML = `<div class="empty-state"><i class="fas fa-users"></i><p>No users found</p></div>`;
+            container.innerHTML += `<div class="empty-state"><i class="fas fa-users"></i><p>No users found</p></div>`;
             return;
         }
         
@@ -431,17 +540,17 @@ class ZentrixAdminPanel {
         for (const user of users) {
             const powerBalance = this.safeNumber(user.powerBalance || 0);
             const tonBalance = this.safeNumber(user.tonBalance || 0);
-            const level = this.safeNumber(user.level || 1);
             const totalReferrals = this.safeNumber(user.totalReferrals || 0);
-            const verifiedReferrals = this.safeNumber(user.verifiedReferrals || 0);
             const referralPower = this.safeNumber(user.referralPower || 0);
+            const totalTasksCompleted = this.safeNumber(user.totalTasksCompleted || 0);
+            const totalMiningStarts = this.safeNumber(user.totalMiningStarts || 0);
+            const level = this.safeNumber(user.level || 1);
             const miningActive = user.miningActive || false;
             const username = user.username || '';
             const cleanUsername = username.startsWith('@') ? username.substring(1) : username;
             const firstName = user.firstName || 'Miner';
             const joinedAt = user.createdAt ? this.formatDateTimeShort(user.createdAt) : 'N/A';
             const photoUrl = user.photoUrl || DEFAULT_IMAGE_URL;
-            const telegramProfileUrl = cleanUsername ? `https://t.me/${cleanUsername}` : '#';
             const state = user.state === 'banned' ? 'banned' : 'active';
             
             html += `
@@ -477,13 +586,6 @@ class ZentrixAdminPanel {
                             </div>
                         </div>
                         <div class="user-stat-item">
-                            <i class="fas fa-chart-line"></i>
-                            <div class="user-stat-info">
-                                <div class="user-stat-label">Mining Level</div>
-                                <div class="user-stat-value">${level}</div>
-                            </div>
-                        </div>
-                        <div class="user-stat-item">
                             <i class="fas fa-users"></i>
                             <div class="user-stat-info">
                                 <div class="user-stat-label">Referrals</div>
@@ -491,17 +593,24 @@ class ZentrixAdminPanel {
                             </div>
                         </div>
                         <div class="user-stat-item">
-                            <i class="fas fa-user-check"></i>
+                            <i class="fas fa-chart-line"></i>
                             <div class="user-stat-info">
-                                <div class="user-stat-label">Verified Referrals</div>
-                                <div class="user-stat-value">${verifiedReferrals}</div>
+                                <div class="user-stat-label">Referral Earnings</div>
+                                <div class="user-stat-value">${Math.floor(referralPower)}</div>
                             </div>
                         </div>
                         <div class="user-stat-item">
-                            <i class="fas fa-bolt"></i>
+                            <i class="fas fa-tasks"></i>
                             <div class="user-stat-info">
-                                <div class="user-stat-label">Referral Power</div>
-                                <div class="user-stat-value">${Math.floor(referralPower)}</div>
+                                <div class="user-stat-label">Tasks Completed</div>
+                                <div class="user-stat-value">${totalTasksCompleted}</div>
+                            </div>
+                        </div>
+                        <div class="user-stat-item">
+                            <i class="fas fa-play"></i>
+                            <div class="user-stat-info">
+                                <div class="user-stat-label">Mining Starts</div>
+                                <div class="user-stat-value">${totalMiningStarts}</div>
                             </div>
                         </div>
                         <div class="user-stat-item">
@@ -536,9 +645,6 @@ class ZentrixAdminPanel {
                             </button>
                         </div>
                         <div class="action-buttons">
-                            <button class="action-btn btn-info" onclick="window.open('${telegramProfileUrl}', '_blank')">
-                                <i class="fas fa-eye"></i> VIEW
-                            </button>
                             ${state === 'active' ? 
                                 `<button class="action-btn btn-danger" onclick="admin.banUser('${user.id}', this)">
                                     <i class="fas fa-ban"></i> BAN
@@ -557,7 +663,7 @@ class ZentrixAdminPanel {
         }
         
         html += '</div>';
-        container.innerHTML = html;
+        container.innerHTML += html;
     }
 
     async getUserReferrals(userId, userName) {
@@ -1771,6 +1877,9 @@ class ZentrixAdminPanel {
                                 <button class="action-btn btn-primary" onclick="admin.directPay('${walletAddress}', ${w.amount})">
                                     <i class="fas fa-arrow-right"></i> Direct PAY
                                 </button>
+                                <button class="action-btn btn-info" onclick="admin.getUserDataForWithdrawal('${userId}', '${userName}')">
+                                    <i class="fas fa-user-circle"></i> Get User Data
+                                </button>
                             </div>
                         </div>
                     ` : ''}
@@ -1780,6 +1889,43 @@ class ZentrixAdminPanel {
         
         html += `</div></div>`;
         document.getElementById('userWithdrawalsResults').innerHTML = html;
+    }
+
+    async getUserDataForWithdrawal(userId, userName) {
+        try {
+            const userSnap = await this.db.ref(`${this.dbPaths.users}/${userId}`).once('value');
+            if (!userSnap.exists()) {
+                this.showNotification("Error", "User not found", "error");
+                return;
+            }
+            
+            const user = userSnap.val();
+            const powerBalance = this.safeNumber(user.powerBalance || 0);
+            const tonBalance = this.safeNumber(user.tonBalance || 0);
+            const totalReferrals = this.safeNumber(user.totalReferrals || 0);
+            const referralPower = this.safeNumber(user.referralPower || 0);
+            const totalTasksCompleted = this.safeNumber(user.totalTasksCompleted || 0);
+            const totalMiningStarts = this.safeNumber(user.totalMiningStarts || 0);
+            const username = user.username || '';
+            const cleanUsername = username.startsWith('@') ? username.substring(1) : username;
+            
+            let message = `<b>👤 User Data: ${userName}</b>\n\n`;
+            message += `🆔 <b>User ID:</b> ${userId}\n`;
+            message += `👤 <b>Username:</b> @${cleanUsername || 'N/A'}\n`;
+            message += `⚡ <b>Power Balance:</b> ${Math.floor(powerBalance)}\n`;
+            message += `💰 <b>TON Balance:</b> ${tonBalance.toFixed(5)} TON\n`;
+            message += `👥 <b>Total Referrals:</b> ${totalReferrals}\n`;
+            message += `📈 <b>Referral Earnings:</b> ${Math.floor(referralPower)}\n`;
+            message += `📋 <b>Tasks Completed:</b> ${totalTasksCompleted}\n`;
+            message += `▶️ <b>Mining Starts:</b> ${totalMiningStarts}\n`;
+            
+            await this.sendTelegramMessage(ADMIN_TELEGRAM_ID, message);
+            this.showNotification("Success", "User data sent to admin", "success");
+            
+        } catch (error) {
+            console.error("Error getting user data:", error);
+            this.showNotification("Error", "Failed to get user data", "error");
+        }
     }
 
     viewWallet(walletAddress) {
@@ -1820,9 +1966,6 @@ class ZentrixAdminPanel {
                                     username: userVal.username || '',
                                     firstName: userVal.firstName || '',
                                     photoUrl: userVal.photoUrl || DEFAULT_IMAGE_URL,
-                                    powerBalance: this.safeNumber(userVal.powerBalance || 0),
-                                    totalReferrals: this.safeNumber(userVal.totalReferrals || 0),
-                                    verifiedReferrals: this.safeNumber(userVal.verifiedReferrals || 0)
                                 };
                                 userDataCache[userId] = userBasic;
                             }
@@ -1912,14 +2055,6 @@ class ZentrixAdminPanel {
                             <span><i class="fas fa-wallet"></i> Wallet:</span>
                             <span class="copyable-wallet" onclick="admin.copyToClipboard('${walletAddress}')">${walletDisplay}</span>
                         </div>
-                        <div class="detail">
-                            <span><i class="fas fa-bolt"></i> Power:</span>
-                            <span>${Math.floor(userData.powerBalance)}</span>
-                        </div>
-                        <div class="detail">
-                            <span><i class="fas fa-users"></i> Referrals:</span>
-                            <span>${userData.totalReferrals} (${userData.verifiedReferrals} verified)</span>
-                        </div>
                     </div>
                     
                     <div class="withdrawal-actions-grid">
@@ -1942,6 +2077,9 @@ class ZentrixAdminPanel {
                         <div class="action-row-single">
                             <button class="action-btn btn-primary" onclick="admin.directPay('${walletAddress}', ${withdrawal.amount})">
                                 <i class="fas fa-arrow-right"></i> Direct PAY
+                            </button>
+                            <button class="action-btn btn-info" onclick="admin.getUserDataForWithdrawal('${userId}', '${displayName}')">
+                                <i class="fas fa-user-circle"></i> Get User Data
                             </button>
                         </div>
                     </div>
@@ -2029,8 +2167,9 @@ class ZentrixAdminPanel {
             }
             
             const updateData = { status: 'completed' };
-            if (transactionHash) {
-                updateData.transactionHash = transactionHash;
+            let txHash = transactionHash || '';
+            if (txHash) {
+                updateData.transactionHash = txHash;
             }
             await withdrawalRef.update(updateData);
             
@@ -2042,7 +2181,35 @@ class ZentrixAdminPanel {
                 totalTonPaid: (currentStatus.totalTonPaid || 0) + amount
             });
             
-            this.showNotification("Success", "Withdrawal approved!", "success");
+            const userSnap = await this.db.ref(`${this.dbPaths.users}/${userId}`).once('value');
+            const user = userSnap.val() || {};
+            const username = user.username || '';
+            const cleanUsername = username.startsWith('@') ? username.substring(1) : username;
+            
+            const walletDisplay = withdrawal.wallet ? 
+                `${withdrawal.wallet.substring(0, 5)}...${withdrawal.wallet.substring(withdrawal.wallet.length - 5)}` : 
+                'N/A';
+            
+            const userMessage = `<b>⚡ Your Withdrawal Approved!</b>\n\n💰 <b>Amount:</b> ${amount.toFixed(5)} TON\n💳 <b>Wallet:</b> ${walletDisplay}\n\n<b>💪 Boost the miner to get more!</b>`;
+            
+            const buttons = [];
+            if (txHash) {
+                buttons.push([{
+                    text: '🔍 View on Explorer',
+                    url: `https://tonviewer.com/transaction/${txHash}`
+                }]);
+            }
+            buttons.push([{
+                text: '📢 Post in Chat',
+                url: CHAT_LINK
+            }]);
+            
+            await this.sendTelegramMessage(userId, userMessage, buttons);
+            
+            const adminMessage = `<b>🆕 New Withdrawal Approved!</b>\n\n- User: ${userId}\n- Username: @${cleanUsername || 'N/A'}\n- Amount: ${amount.toFixed(5)} TON\n- Wallet: ${withdrawal.wallet || 'N/A'}`;
+            await this.sendTelegramMessage(ADMIN_TELEGRAM_ID, adminMessage);
+            
+            this.showNotification("Success", "Withdrawal approved and notifications sent!", "success");
             
             document.querySelector('.modal-overlay.show')?.remove();
             this.removeWithdrawalFromUI(userId, withdrawalId);
@@ -2114,6 +2281,18 @@ class ZentrixAdminPanel {
                         <h3><i class="fas fa-edit"></i> Create Broadcast</h3>
                         
                         <div class="form-group">
+                            <label>Broadcast Method</label>
+                            <div class="broadcast-method-selector">
+                                <button class="method-btn active" data-method="direct" onclick="admin.setBroadcastMethod('direct')">
+                                    <i class="fas fa-pen"></i> Direct
+                                </button>
+                                <button class="method-btn" data-method="forward" onclick="admin.setBroadcastMethod('forward')">
+                                    <i class="fas fa-forward"></i> Forward
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
                             <label>Recipients</label>
                             <select id="broadcastType" onchange="admin.toggleBroadcastTarget()">
                                 <option value="all">All Users</option>
@@ -2126,36 +2305,49 @@ class ZentrixAdminPanel {
                             <input type="text" id="broadcastUserId" placeholder="Telegram User ID">
                         </div>
                         
-                        <div class="form-group">
-                            <label>Message *</label>
-                            <textarea id="broadcastMessage" rows="5" placeholder="Enter your message here..."></textarea>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Image (Optional)</label>
-                            <input type="text" id="broadcastImage" placeholder="https://example.com/image.jpg">
-                        </div>
-                        
-                        <div class="html-tools">
-                            <button class="html-btn" onclick="admin.insertHtmlTag('b')"><b>Bold</b></button>
-                            <button class="html-btn" onclick="admin.insertHtmlTag('i')"><i>Italic</i></button>
-                            <button class="html-btn" onclick="admin.insertLink()">🔗 Link</button>
-                        </div>
-                        
-                        <div class="inline-buttons-section">
-                            <h4><i class="fas fa-th-large"></i> Inline Buttons</h4>
-                            <div id="inlineButtonsContainer">
-                                <div class="button-row">
-                                    <input type="text" class="button-text" placeholder="Button text" maxlength="30">
-                                    <input type="text" class="button-url" placeholder="URL">
-                                    <button class="btn-sm btn-danger" onclick="this.parentElement.remove(); admin.updatePreview()">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                </div>
+                        <div id="directMessageFields">
+                            <div class="form-group">
+                                <label>Message *</label>
+                                <textarea id="broadcastMessage" rows="4" placeholder="Enter your message here..."></textarea>
                             </div>
-                            <button class="action-btn btn-secondary" onclick="admin.addInlineButton()">
-                                <i class="fas fa-plus"></i> Add Button
-                            </button>
+                            
+                            <div class="form-group">
+                                <label>Image (Optional)</label>
+                                <input type="text" id="broadcastImage" placeholder="https://example.com/image.jpg">
+                            </div>
+                            
+                            <div class="html-tools">
+                                <button class="html-btn" onclick="admin.insertHtmlTag('b')"><b>Bold</b></button>
+                                <button class="html-btn" onclick="admin.insertHtmlTag('i')"><i>Italic</i></button>
+                                <button class="html-btn" onclick="admin.insertLink()">🔗 Link</button>
+                            </div>
+                            
+                            <div class="inline-buttons-section">
+                                <h4><i class="fas fa-th-large"></i> Inline Buttons</h4>
+                                <div id="inlineButtonsContainer">
+                                    <div class="button-row">
+                                        <input type="text" class="button-text" placeholder="Button text" maxlength="30">
+                                        <input type="text" class="button-url" placeholder="URL">
+                                        <button class="btn-sm btn-danger" onclick="this.parentElement.remove(); admin.updatePreview()">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <button class="action-btn btn-secondary" onclick="admin.addInlineButton()">
+                                    <i class="fas fa-plus"></i> Add Button
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="forwardMessageFields" style="display: none;">
+                            <div class="form-group">
+                                <label>Chat ID (source chat)</label>
+                                <input type="text" id="forwardChatId" placeholder="-1001234567890">
+                            </div>
+                            <div class="form-group">
+                                <label>Message ID (source message)</label>
+                                <input type="text" id="forwardMessageId" placeholder="1234">
+                            </div>
                         </div>
                         
                         <div class="broadcast-preview">
@@ -2191,6 +2383,16 @@ class ZentrixAdminPanel {
             </div>
         `;
         
+        this.updatePreview();
+    }
+
+    setBroadcastMethod(method) {
+        this.broadcastMethod = method;
+        document.querySelectorAll('.method-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.method === method);
+        });
+        document.getElementById('directMessageFields').style.display = method === 'direct' ? 'block' : 'none';
+        document.getElementById('forwardMessageFields').style.display = method === 'forward' ? 'block' : 'none';
         this.updatePreview();
     }
 
@@ -2260,7 +2462,22 @@ class ZentrixAdminPanel {
     }
 
     updatePreview() {
-        const message = document.getElementById('broadcastMessage').value;
+        if (this.broadcastMethod === 'forward') {
+            const preview = document.getElementById('broadcastPreview');
+            preview.innerHTML = `
+                <div class="preview-placeholder">
+                    <i class="fas fa-forward"></i>
+                    <p>Forward mode: message will be forwarded from source chat</p>
+                    <p style="font-size: 0.7rem; color: var(--text-light);">
+                        Chat ID: ${document.getElementById('forwardChatId')?.value || 'Not set'} | 
+                        Message ID: ${document.getElementById('forwardMessageId')?.value || 'Not set'}
+                    </p>
+                </div>
+            `;
+            return;
+        }
+        
+        const message = document.getElementById('broadcastMessage')?.value || '';
         const preview = document.getElementById('broadcastPreview');
         const imageUrl = document.getElementById('broadcastImage')?.value;
         
@@ -2306,21 +2523,38 @@ class ZentrixAdminPanel {
     }
 
     async sendBroadcast() {
-        const message = document.getElementById('broadcastMessage').value.trim();
         const type = document.getElementById('broadcastType').value;
         const userId = document.getElementById('broadcastUserId')?.value.trim();
-        const inlineButtons = this.getInlineButtons();
-        const imageUrl = document.getElementById('broadcastImage')?.value.trim();
-        
-        if (!message) {
-            this.showNotification("Error", "Please enter a message", "error");
-            return;
-        }
+        const method = this.broadcastMethod;
         
         if (type === 'specific' && !userId) {
             this.showNotification("Error", "Please enter User ID", "error");
             return;
         }
+        
+        if (method === 'direct') {
+            const message = document.getElementById('broadcastMessage').value.trim();
+            if (!message) {
+                this.showNotification("Error", "Please enter a message", "error");
+                return;
+            }
+            await this.sendDirectBroadcast(message);
+        } else {
+            const chatId = document.getElementById('forwardChatId').value.trim();
+            const messageId = document.getElementById('forwardMessageId').value.trim();
+            if (!chatId || !messageId) {
+                this.showNotification("Error", "Please enter both Chat ID and Message ID", "error");
+                return;
+            }
+            await this.sendForwardBroadcast(chatId, messageId);
+        }
+    }
+
+    async sendDirectBroadcast(message) {
+        const type = document.getElementById('broadcastType').value;
+        const userId = document.getElementById('broadcastUserId')?.value.trim();
+        const inlineButtons = this.getInlineButtons();
+        const imageUrl = document.getElementById('broadcastImage')?.value.trim();
         
         if (!confirm(`Send broadcast to ${type === 'all' ? 'ALL users' : '1 user'}?`)) return;
         
@@ -2386,6 +2620,89 @@ class ZentrixAdminPanel {
             console.error("Broadcast error:", error);
             this.showNotification("Error", `Broadcast failed: ${error.message}`, "error");
             if (progressDiv) progressDiv.style.display = 'none';
+        }
+    }
+
+    async sendForwardBroadcast(fromChatId, messageId) {
+        const type = document.getElementById('broadcastType').value;
+        const userId = document.getElementById('broadcastUserId')?.value.trim();
+        
+        if (!confirm(`Forward message to ${type === 'all' ? 'ALL users' : '1 user'}?`)) return;
+        
+        const progressDiv = document.getElementById('broadcastProgress');
+        const progressFill = document.getElementById('broadcastProgressFill');
+        const sentSpan = document.getElementById('broadcastSent');
+        const totalSpan = document.getElementById('broadcastTotal');
+        const failedSpan = document.getElementById('broadcastFailed');
+        
+        if (progressDiv) progressDiv.style.display = 'block';
+        
+        try {
+            let users = [];
+            if (type === 'all') {
+                const usersSnap = await this.db.ref(this.dbPaths.users).once('value');
+                usersSnap.forEach(child => { users.push({ id: child.key, ...child.val() }); });
+            } else {
+                const userSnap = await this.db.ref(`${this.dbPaths.users}/${userId}`).once('value');
+                if (!userSnap.exists()) throw new Error('User not found');
+                users.push({ id: userId, ...userSnap.val() });
+            }
+            
+            const total = users.length;
+            if (total === 0) throw new Error('No users found');
+            if (totalSpan) totalSpan.textContent = total;
+            
+            let sent = 0, failed = 0;
+            const CONCURRENT_LIMIT = 20;
+            
+            for (let i = 0; i < users.length; i += CONCURRENT_LIMIT) {
+                const batch = users.slice(i, i + CONCURRENT_LIMIT);
+                const results = await Promise.allSettled(
+                    batch.map(user => this.forwardTelegramMessage(user.id, fromChatId, messageId))
+                );
+                results.forEach(result => {
+                    if (result.status === 'fulfilled') sent++;
+                    else failed++;
+                });
+                if (progressFill) progressFill.style.width = `${(sent + failed) / total * 100}%`;
+                if (sentSpan) sentSpan.textContent = sent;
+                if (failedSpan) failedSpan.textContent = `Failed: ${failed}`;
+                if (i + CONCURRENT_LIMIT < users.length) await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
+            this.showNotification("Success", `Broadcast completed!\nSent: ${sent}\nFailed: ${failed}`, "success");
+            await this.sendTelegramMessage(ADMIN_TELEGRAM_ID, `✅ Broadcast (Forward) completed!\n\nSent: ${sent}\nFailed: ${failed}\nTotal: ${total}`);
+            
+            document.getElementById('forwardChatId').value = '';
+            document.getElementById('forwardMessageId').value = '';
+            setTimeout(() => { if (progressDiv) progressDiv.style.display = 'none'; }, 3000);
+            
+        } catch (error) {
+            console.error("Broadcast error:", error);
+            this.showNotification("Error", `Broadcast failed: ${error.message}`, "error");
+            if (progressDiv) progressDiv.style.display = 'none';
+        }
+    }
+
+    async forwardTelegramMessage(chatId, fromChatId, messageId) {
+        try {
+            const url = `https://api.telegram.org/bot${this.botToken}/forwardMessage`;
+            const payload = {
+                chat_id: chatId,
+                from_chat_id: fromChatId,
+                message_id: parseInt(messageId)
+            };
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            if (!data.ok) throw new Error(data.description || 'Telegram API error');
+            return data.result;
+        } catch (error) {
+            console.error(`Telegram forward error for ${chatId}:`, error);
+            throw error;
         }
     }
 
