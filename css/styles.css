@@ -2082,3 +2082,10 @@ body {
 .method-btn:hover:not(.active) {
     background: rgba(124, 147, 255, 0.15);
 }
+
+    
+.bonus-icon {
+    font-size: 3rem;
+    color: #ffffff;
+    margin-bottom: 8px;
+} 
